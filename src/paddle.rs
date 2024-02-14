@@ -1,8 +1,9 @@
-use super::{Collider, Velocity};
+use super::Collider;
 use bevy::prelude::*;
 
 const LEFT_PADDLE: f32 = -250.0;
 const RIGHT_PADDLE: f32 = 250.0;
+pub const PADDLE_PADDING: f32 = 1.0;
 
 #[derive(Component)]
 pub struct Paddle;
@@ -23,7 +24,6 @@ impl PaddleLocation {
 
 #[derive(Bundle)]
 pub struct PaddleBundle {
-    velocity: Velocity,
     paddle: Paddle,
     collider: Collider,
     sprite: SpriteBundle,
@@ -46,7 +46,6 @@ impl PaddleBundle {
             },
             paddle: Paddle,
             collider: Collider,
-            velocity: Velocity(Vec2::new(0.0, 0.0)),
         }
     }
 }

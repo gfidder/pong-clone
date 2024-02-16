@@ -1,10 +1,10 @@
-use super::{Collider, WALL_LEFT, WALL_RIGHT};
+use super::{Collider, Velocity, WALL_LEFT, WALL_RIGHT};
 use bevy::prelude::*;
 
 const LEFT_PADDLE: f32 = -425.0;
 const RIGHT_PADDLE: f32 = 425.0;
 pub const PADDLE_PADDING: f32 = 1.0;
-pub const PADDLE_HEIGHT: f32 = 100.0;
+pub const PADDLE_HEIGHT: f32 = 175.0;
 
 #[derive(Component)]
 pub struct Paddle;
@@ -28,6 +28,7 @@ pub struct PaddleBundle {
     paddle: Paddle,
     collider: Collider,
     sprite: SpriteBundle,
+    velocity: Velocity,
 }
 
 impl PaddleBundle {
@@ -52,6 +53,7 @@ impl PaddleBundle {
             },
             paddle: Paddle,
             collider: Collider,
+            velocity: Velocity(Vec2::new(0.0, 0.0)),
         }
     }
 }

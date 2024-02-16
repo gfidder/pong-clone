@@ -183,10 +183,10 @@ fn spawn_walls(commands: &mut Commands) {
 
 fn player_paddle_movement(
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<&mut Transform, With<Player>>,
+    mut query: Query<(&mut Transform, &mut Velocity), With<Player>>,
     time: Res<Time>,
 ) {
-    let mut player_transform = query.single_mut();
+    let (mut player_transform, mut player_velocity) = query.single_mut();
     let paddle_velocity: f32 = 500.0;
     let mut direction: f32 = 0.0;
 
@@ -213,6 +213,7 @@ fn player_paddle_movement(
     let lower_bound = WALL_BOTTOM + WALL_THICKNESS / 2.0 + PADDLE_HEIGHT / 2.0 + PADDLE_PADDING;
 
     player_transform.translation.y = new_transform.clamp(lower_bound, upper_bound);
+    player_velocity.y = direction * paddle_velocity;
 }
 
 fn apply_velocity(mut query: Query<(&mut Transform, &Velocity), With<Ball>>, time: Res<Time>) {
@@ -224,13 +225,13 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity), With<Ball>>, tim
 
 fn run_cpu_logic(
     ball_query: Query<(&Velocity, &Transform), (With<Ball>, Without<Paddle>)>,
-    mut cpu_query: Query<&mut Transform, (With<CpuPlayer>, Without<Ball>)>,
+    mut cpu_query: Query<(&mut Transform, &mut Velocity), (With<CpuPlayer>, Without<Ball>)>,
     time: Res<Time>,
 ) {
-    // debug this here: https://github.com/bevyengine/bevy/issues/2198
+    let movement_margin = PADDLE_HEIGHT / 20.0;
 
     let (ball_velocity, ball_transform) = ball_query.single();
-    let mut cpu_transform = cpu_query.single_mut();
+    let (mut cpu_transform, mut cpu_velocity) = cpu_query.single_mut();
     let mut direction = 0.0;
 
     if ball_velocity.x < 0.0 {
@@ -238,10 +239,12 @@ fn run_cpu_logic(
         return;
     }
 
-    if ball_transform.translation.y > cpu_transform.translation.y {
-        direction += 1.0;
-    } else if ball_transform.translation.y < cpu_transform.translation.y {
-        direction -= 1.0;
+    if (ball_transform.translation.y - cpu_transform.translation.y).abs() > movement_margin {
+        if ball_transform.translation.y > cpu_transform.translation.y {
+            direction += 1.0;
+        } else if ball_transform.translation.y < cpu_transform.translation.y {
+            direction -= 1.0;
+        }
     }
 
     let new_cpu_transform =
@@ -251,24 +254,20 @@ fn run_cpu_logic(
     let lower_bound = WALL_BOTTOM + WALL_THICKNESS / 2.0 + PADDLE_HEIGHT / 2.0 + PADDLE_PADDING;
 
     cpu_transform.translation.y = new_cpu_transform.clamp(lower_bound, upper_bound);
+    cpu_velocity.y = direction * AI_SPEED;
 }
 
 fn check_collision(
     mut ball_query: Query<(&mut Velocity, &Transform), With<Ball>>,
     collider_query: Query<
-        (
-            &Transform,
-            Option<&Wall>,
-            Option<&Paddle>,
-            Option<&Velocity>,
-        ),
+        (&Transform, Option<&Paddle>, Option<&Velocity>),
         (With<Collider>, Without<Ball>),
     >,
 ) {
     let (mut ball_velocity, ball_transform) = ball_query.single_mut();
     let ball_size = ball_transform.scale.truncate();
 
-    for (collider, wall, paddle, velocity) in &collider_query {
+    for (collider, _wall, velocity) in collider_query.iter() {
         let collision = collide(
             ball_transform.translation,
             ball_size,
@@ -288,13 +287,22 @@ fn check_collision(
                 _ => {}
             }
 
+            let mut new_y_ball_velocity = ball_velocity.y;
+
+            if let Some(velocity) = velocity {
+                // add 1/5 of the velocity to ball speed if present
+                new_y_ball_velocity += velocity.y / 5.0;
+            }
+
             if reflect_y {
-                ball_velocity.y = -ball_velocity.y
+                new_y_ball_velocity = -new_y_ball_velocity
             }
 
             if reflect_x {
                 ball_velocity.x = -ball_velocity.x
             }
+
+            ball_velocity.y = new_y_ball_velocity;
         }
     }
 }

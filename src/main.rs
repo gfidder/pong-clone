@@ -2,7 +2,7 @@ use bevy::{
     prelude::*,
     sprite::collide_aabb::{collide, Collision},
 };
-use paddle::{Paddle, PaddleBundle, PaddleLocation, PADDLE_PADDING};
+use paddle::{Paddle, PaddleBundle, PaddleLocation, PADDLE_HEIGHT, PADDLE_PADDING};
 use std::time::Duration;
 
 mod paddle;
@@ -12,6 +12,8 @@ const WALL_BOTTOM: f32 = -300.0;
 const WALL_LEFT: f32 = -450.0;
 const WALL_RIGHT: f32 = 450.0;
 const WALL_THICKNESS: f32 = 10.0;
+
+const AI_SPEED: f32 = 200.0;
 
 #[derive(Debug, Component)]
 struct Player;
@@ -31,10 +33,14 @@ struct Collider;
 #[derive(Component)]
 struct Ball;
 
+#[derive(Component)]
+struct Wall;
+
 #[derive(Bundle)]
 struct WallBundle {
     sprite_bundle: SpriteBundle,
     collider: Collider,
+    wall: Wall,
 }
 
 enum WallLocation {
@@ -88,13 +94,22 @@ impl WallBundle {
                 ..Default::default()
             },
             collider: Collider,
+            wall: Wall,
         }
     }
 }
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Pong Clone".into(),
+                resolution: (900., 600.).into(),
+                resizable: false,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5)))
         .add_systems(Startup, setup)
         .add_systems(
@@ -119,14 +134,15 @@ fn setup(mut commands: Commands) {
     commands.spawn((PaddleBundle::new(PaddleLocation::Left), Player));
     commands.spawn((PaddleBundle::new(PaddleLocation::Right), CpuPlayer));
 
+    // Ball
     commands.spawn((
         Ball,
-        Velocity(Vec2::new(400.0, 00.0)),
+        Velocity(Vec2::new(200.0, 200.0)),
         Collider,
         SpriteBundle {
             transform: Transform {
                 translation: Vec3::new(0.0, 0.0, 0.0),
-                scale: Vec3::new(15.0, 15.0, 1.0),
+                scale: Vec3::new(10.0, 10.0, 1.0),
                 ..Default::default()
             },
             sprite: Sprite {
@@ -193,8 +209,8 @@ fn player_paddle_movement(
     let new_transform =
         player_transform.translation.y + direction * paddle_velocity * time.delta_seconds();
 
-    let upper_bound = WALL_TOP - WALL_THICKNESS / 2.0 - 100.0 / 2.0 - PADDLE_PADDING;
-    let lower_bound = WALL_BOTTOM + WALL_THICKNESS / 2.0 + 100.0 / 2.0 + PADDLE_PADDING;
+    let upper_bound = WALL_TOP - WALL_THICKNESS / 2.0 - PADDLE_HEIGHT / 2.0 - PADDLE_PADDING;
+    let lower_bound = WALL_BOTTOM + WALL_THICKNESS / 2.0 + PADDLE_HEIGHT / 2.0 + PADDLE_PADDING;
 
     player_transform.translation.y = new_transform.clamp(lower_bound, upper_bound);
 }
@@ -228,22 +244,31 @@ fn run_cpu_logic(
         direction -= 1.0;
     }
 
-    let new_cpu_transform = cpu_transform.translation.y + direction * 100.0 * time.delta_seconds();
+    let new_cpu_transform =
+        cpu_transform.translation.y + direction * AI_SPEED * time.delta_seconds();
 
-    let upper_bound = WALL_TOP - WALL_THICKNESS / 2.0 - 100.0 / 2.0 - PADDLE_PADDING;
-    let lower_bound = WALL_BOTTOM + WALL_THICKNESS / 2.0 + 100.0 / 2.0 + PADDLE_PADDING;
+    let upper_bound = WALL_TOP - WALL_THICKNESS / 2.0 - PADDLE_HEIGHT / 2.0 - PADDLE_PADDING;
+    let lower_bound = WALL_BOTTOM + WALL_THICKNESS / 2.0 + PADDLE_HEIGHT / 2.0 + PADDLE_PADDING;
 
     cpu_transform.translation.y = new_cpu_transform.clamp(lower_bound, upper_bound);
 }
 
 fn check_collision(
     mut ball_query: Query<(&mut Velocity, &Transform), With<Ball>>,
-    collider_query: Query<&Transform, With<Collider>>,
+    collider_query: Query<
+        (
+            &Transform,
+            Option<&Wall>,
+            Option<&Paddle>,
+            Option<&Velocity>,
+        ),
+        (With<Collider>, Without<Ball>),
+    >,
 ) {
     let (mut ball_velocity, ball_transform) = ball_query.single_mut();
     let ball_size = ball_transform.scale.truncate();
 
-    for collider in &collider_query {
+    for (collider, wall, paddle, velocity) in &collider_query {
         let collision = collide(
             ball_transform.translation,
             ball_size,

@@ -36,12 +36,27 @@ struct Ball;
 #[derive(Component)]
 struct Wall;
 
+#[derive(Component)]
+enum ScoreType {
+    Player,
+    Computer,
+}
+
 #[derive(Bundle)]
 struct WallBundle {
     sprite_bundle: SpriteBundle,
     collider: Collider,
     wall: Wall,
 }
+
+#[derive(Resource, Default)]
+struct Scoreboard {
+    player_score: u8,
+    computer_score: u8,
+}
+
+#[derive(Component)]
+struct ScoreboardUi;
 
 enum WallLocation {
     Left,
@@ -88,7 +103,7 @@ impl WallBundle {
                     ..Default::default()
                 },
                 sprite: Sprite {
-                    color: Color::DARK_GRAY,
+                    color: Color::GRAY,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -111,6 +126,7 @@ fn main() {
             ..Default::default()
         }))
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5)))
+        .insert_resource(Scoreboard::default())
         .add_systems(Startup, setup)
         .add_systems(
             FixedUpdate,
@@ -122,11 +138,14 @@ fn main() {
             )
                 .chain(),
         )
+        .add_systems(Update, update_scoreboard)
         // .add_systems(FixedUpdate, apply_velocity)
         .run();
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font_handle = asset_server.load("PixelOperator.ttf");
+
     // Camera
     commands.spawn(Camera2dBundle::default());
 
@@ -153,23 +172,71 @@ fn setup(mut commands: Commands) {
         },
     ));
 
-    // commands.spawn((
-    //     TextBundle::from_section(
-    //         "hello\nbevy",
-    //         TextStyle {
-    //             font_size: 50.0,
-    //             ..Default::default()
-    //         },
-    //     )
-    //     .with_text_alignment(TextAlignment::Center)
-    //     .with_style(Style {
-    //         position_type: PositionType::Absolute,
-    //         top: Val::Px(5.0),
-    //         left: Val::Px(5.0),
-    //         ..Default::default()
-    //     }),
-    //     ColorText,
-    // ));
+    // Scoreboard
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ScoreboardUi,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                TextBundle::from_sections([
+                    TextSection::new(
+                        "Score: ",
+                        TextStyle {
+                            font_size: 40.0,
+                            font: font_handle.clone(),
+                            ..Default::default()
+                        },
+                    ),
+                    TextSection::from_style(TextStyle {
+                        font_size: 40.0,
+                        font: font_handle.clone(),
+                        ..Default::default()
+                    }),
+                ])
+                .with_style(Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Percent(10.0),
+                    left: Val::Percent(5.0),
+                    ..Default::default()
+                }),
+                ScoreType::Player,
+                ScoreboardUi,
+            ));
+
+            parent.spawn((
+                TextBundle::from_sections([
+                    TextSection::new(
+                        "Score: ",
+                        TextStyle {
+                            font_size: 40.0,
+                            font: font_handle.clone(),
+                            ..Default::default()
+                        },
+                    ),
+                    TextSection::from_style(TextStyle {
+                        font_size: 40.0,
+                        font: font_handle.clone(),
+                        color: Color::RED,
+                    }),
+                ])
+                .with_style(Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Percent(10.0),
+                    right: Val::Percent(5.0),
+                    ..Default::default()
+                }),
+                ScoreType::Computer,
+                ScoreboardUi,
+            ));
+        });
 
     spawn_walls(&mut commands);
 }
@@ -220,6 +287,22 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity), With<Ball>>, tim
     for (mut transform, velocity) in &mut query {
         transform.translation.x += velocity.x * time.delta_seconds();
         transform.translation.y += velocity.y * time.delta_seconds();
+    }
+}
+
+fn update_scoreboard(
+    scoreboard: Res<Scoreboard>,
+    mut query: Query<(&mut Text, &ScoreType), With<ScoreboardUi>>,
+) {
+    for (mut text, score_type) in query.iter_mut() {
+        match score_type {
+            ScoreType::Player => {
+                text.sections[1].value = scoreboard.player_score.to_string();
+            }
+            ScoreType::Computer => {
+                text.sections[1].value = scoreboard.computer_score.to_string();
+            }
+        }
     }
 }
 

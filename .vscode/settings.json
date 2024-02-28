@@ -1,5 +1,5 @@
 {
   "cSpell.words": ["aabb"],
   "rust-analyzer.inlayHints.chainingHints.enable": true,
-  "rust-analyzer.inlayHints.bindingModeHints.enable": false
+  "rust-analyzer.inlayHints.bindingModeHints.enable": false,
 }

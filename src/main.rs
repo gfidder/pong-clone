@@ -1,6 +1,7 @@
 use bevy::{
+    // sprite::collide_aabb::{collide, Collision},
+    math::bounding::{Aabb2d, BoundingVolume, IntersectsVolume},
     prelude::*,
-    sprite::collide_aabb::{collide, Collision},
 };
 use paddle::{Paddle, PaddleBundle, PaddleLocation, PADDLE_HEIGHT, PADDLE_PADDING};
 use std::time::Duration;
@@ -249,7 +250,7 @@ fn spawn_walls(commands: &mut Commands) {
 }
 
 fn player_paddle_movement(
-    keyboard_input: Res<Input<KeyCode>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&mut Transform, &mut Velocity), With<Player>>,
     time: Res<Time>,
 ) {
@@ -257,11 +258,11 @@ fn player_paddle_movement(
     let paddle_velocity: f32 = 500.0;
     let mut direction: f32 = 0.0;
 
-    if keyboard_input.pressed(KeyCode::Up) {
+    if keyboard_input.pressed(KeyCode::ArrowUp) {
         direction += 1.0;
     }
 
-    if keyboard_input.pressed(KeyCode::Down) {
+    if keyboard_input.pressed(KeyCode::ArrowDown) {
         direction -= 1.0;
     }
 
@@ -343,31 +344,40 @@ fn run_cpu_logic(
 fn check_collision(
     mut ball_query: Query<(&mut Velocity, &Transform), With<Ball>>,
     collider_query: Query<
-        (&Transform, Option<&Paddle>, Option<&Velocity>),
+        (&Transform, Option<&Wall>, Option<&Velocity>),
         (With<Collider>, Without<Ball>),
     >,
+    mut scoreboard: ResMut<Scoreboard>,
 ) {
     let (mut ball_velocity, ball_transform) = ball_query.single_mut();
     let ball_size = ball_transform.scale.truncate();
 
-    for (collider, _wall, velocity) in collider_query.iter() {
-        let collision = collide(
-            ball_transform.translation,
-            ball_size,
-            collider.translation,
-            collider.scale.truncate(),
+    for (collider, wall, velocity) in collider_query.iter() {
+        let collision = collide_with_side(
+            Aabb2d::new(ball_transform.translation.truncate(), ball_size / 2.),
+            Aabb2d::new(
+                collider.translation.truncate(),
+                collider.scale.truncate() / 2.,
+            ),
         );
 
         if let Some(collision) = collision {
             let mut reflect_x = false;
             let mut reflect_y = false;
 
+            if wall.is_some() {
+                match collision {
+                    Collision::Right => scoreboard.computer_score += 1,
+                    Collision::Left => scoreboard.player_score += 1,
+                    _ => {}
+                }
+            }
+
             match collision {
                 Collision::Left => reflect_x = ball_velocity.x > 0.0,
                 Collision::Right => reflect_x = ball_velocity.x < 0.0,
                 Collision::Bottom => reflect_y = ball_velocity.y > 0.0,
                 Collision::Top => reflect_y = ball_velocity.y < 0.0,
-                _ => {}
             }
 
             let mut new_y_ball_velocity = ball_velocity.y;
@@ -388,4 +398,34 @@ fn check_collision(
             ball_velocity.y = new_y_ball_velocity;
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Collision {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+fn collide_with_side(ball: Aabb2d, collider: Aabb2d) -> Option<Collision> {
+    if !ball.intersects(&collider) {
+        return None;
+    }
+
+    let closest = collider.closest_point(ball.center());
+    let offset = ball.center() - closest;
+    let side = if offset.x.abs() > offset.y.abs() {
+        if offset.x < 0.0 {
+            Collision::Left
+        } else {
+            Collision::Right
+        }
+    } else if offset.y > 0. {
+        Collision::Top
+    } else {
+        Collision::Bottom
+    };
+
+    Some(side)
 }

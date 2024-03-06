@@ -59,11 +59,25 @@ struct Scoreboard {
 #[derive(Component)]
 struct ScoreboardUi;
 
+#[derive(Resource, Default)]
+struct GameEntities {
+    player_paddle: Option<Entity>,
+    computer_paddle: Option<Entity>,
+    ball: Option<Entity>,
+}
+
 enum WallLocation {
     Left,
     Right,
     Top,
     Bottom,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, States)]
+enum GameState {
+    #[default]
+    InGame,
+    Reset,
 }
 
 impl WallLocation {
@@ -126,9 +140,13 @@ fn main() {
             }),
             ..Default::default()
         }))
+        .init_state::<GameState>()
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5)))
         .insert_resource(Scoreboard::default())
+        .insert_resource(GameEntities::default())
         .add_systems(Startup, setup)
+        .add_systems(OnEnter(GameState::InGame), setup_game)
+        .add_systems(OnExit(GameState::InGame), cleanup_game)
         .add_systems(
             FixedUpdate,
             (
@@ -137,9 +155,14 @@ fn main() {
                 apply_velocity,
                 check_collision,
             )
-                .chain(),
+                .chain()
+                .run_if(in_state(GameState::InGame)),
         )
-        .add_systems(Update, update_scoreboard)
+        .add_systems(
+            Update,
+            (update_scoreboard, check_reset).run_if(in_state(GameState::InGame)),
+        )
+        .add_systems(Update, (check_restart).run_if(in_state(GameState::Reset)))
         // .add_systems(FixedUpdate, apply_velocity)
         .run();
 }
@@ -149,29 +172,6 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     // Camera
     commands.spawn(Camera2dBundle::default());
-
-    // Paddles
-    commands.spawn((PaddleBundle::new(PaddleLocation::Left), Player));
-    commands.spawn((PaddleBundle::new(PaddleLocation::Right), CpuPlayer));
-
-    // Ball
-    commands.spawn((
-        Ball,
-        Velocity(Vec2::new(200.0, 200.0)),
-        Collider,
-        SpriteBundle {
-            transform: Transform {
-                translation: Vec3::new(0.0, 0.0, 0.0),
-                scale: Vec3::new(10.0, 10.0, 1.0),
-                ..Default::default()
-            },
-            sprite: Sprite {
-                color: Color::RED,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    ));
 
     // Scoreboard
     commands
@@ -247,6 +247,78 @@ fn spawn_walls(commands: &mut Commands) {
     commands.spawn(WallBundle::new(WallLocation::Right));
     commands.spawn(WallBundle::new(WallLocation::Top));
     commands.spawn(WallBundle::new(WallLocation::Bottom));
+}
+
+fn setup_game(mut commands: Commands, mut thing: ResMut<GameEntities>) {
+    // Paddles
+    thing.player_paddle = Some(
+        commands
+            .spawn((PaddleBundle::new(PaddleLocation::Left), Player))
+            .id(),
+    );
+    thing.computer_paddle = Some(
+        commands
+            .spawn((PaddleBundle::new(PaddleLocation::Right), CpuPlayer))
+            .id(),
+    );
+
+    // Ball
+    thing.ball = Some(
+        commands
+            .spawn((
+                Ball,
+                Velocity(Vec2::new(200.0, 200.0)),
+                Collider,
+                SpriteBundle {
+                    transform: Transform {
+                        translation: Vec3::new(0.0, 0.0, 0.0),
+                        scale: Vec3::new(10.0, 10.0, 1.0),
+                        ..Default::default()
+                    },
+                    sprite: Sprite {
+                        color: Color::RED,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            ))
+            .id(),
+    );
+}
+
+fn cleanup_game(mut commands: Commands, mut thing: ResMut<GameEntities>) {
+    if let Some(player) = thing.player_paddle {
+        commands.entity(player).despawn();
+        thing.player_paddle = None
+    }
+
+    if let Some(computer) = thing.computer_paddle {
+        commands.entity(computer).despawn();
+        thing.computer_paddle = None
+    }
+
+    if let Some(ball) = thing.ball {
+        commands.entity(ball).despawn();
+        thing.ball = None
+    }
+}
+
+fn check_reset(
+    mut next_state: ResMut<NextState<GameState>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    if keyboard_input.pressed(KeyCode::KeyR) {
+        next_state.set(GameState::Reset);
+    }
+}
+
+fn check_restart(
+    mut next_state: ResMut<NextState<GameState>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    if keyboard_input.pressed(KeyCode::KeyQ) {
+        next_state.set(GameState::InGame);
+    }
 }
 
 fn player_paddle_movement(
